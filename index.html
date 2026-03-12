@@ -2,159 +2,132 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>SuarezCraft | Multiplayer Lobby</title>
+    <title>SuarezCraft | Fix Final</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --mc-green: #55ff55; --mc-grey: #313131; }
         body { 
-            background: #1a1a1a; color: white; font-family: 'Courier New', monospace;
-            margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
+            background: #1a1a1a; color: white; font-family: sans-serif; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; 
         }
-
-        /* --- MENÚ DESPLEGABLE --- */
-        .dropdown {
-            position: relative; display: inline-block; width: 250px;
+        .panel { 
+            background: #c6c6c6; border: 4px solid #000; padding: 20px; color: #333; width: 300px; text-align: center;
+            box-shadow: 8px 8px 0px #000;
         }
-
-        .dropbtn {
-            background-color: #c6c6c6; color: #333; padding: 12px;
-            font-size: 16px; border: 4px solid #000; cursor: pointer;
-            width: 100%; text-align: left; font-weight: bold;
+        h1 { color: #55ff55; text-shadow: 2px 2px #000; margin-top: 0; }
+        select { 
+            width: 100%; padding: 10px; margin: 10px 0; background: #8b8b8b; 
+            color: white; border: 2px solid #000; font-weight: bold;
         }
-
-        .dropdown-content {
-            display: none; position: absolute; background-color: #8b8b8b;
-            width: 100%; border: 4px solid #000; z-index: 1; max-height: 200px; overflow-y: auto;
+        button { 
+            width: 100%; padding: 10px; background: #55ff55; border: 2px solid #000; 
+            font-weight: bold; cursor: pointer; 
         }
-
-        .dropdown-content div {
-            color: white; padding: 10px; text-decoration: none; display: block;
-            cursor: pointer; border-bottom: 2px solid #333;
-        }
-
-        .dropdown-content div:hover { background-color: var(--mc-green); color: black; }
-
-        .show { display: block; }
-
-        #info-panel { margin-bottom: 20px; text-align: center; }
-        .badge { background: var(--mc-green); color: black; padding: 5px 10px; font-weight: bold; }
+        button:hover { background: #32cd32; }
+        #log { font-size: 12px; margin-top: 10px; color: #555; }
     </style>
 </head>
 <body>
 
-    <div id="info-panel">
-        <h1 style="color: var(--mc-green);">SUAREZCRAFT</h1>
-        <p>ESTADO: <span id="status" class="badge">IDENTIFICANDO...</span></p>
-    </div>
-
-    <div class="dropdown">
-        <button onclick="toggleMenu()" class="dropbtn">JUGADORES ACTIVOS ▼</button>
-        <div id="myDropdown" class="dropdown-content">
-            <div style="color: #444; font-style: italic;">Buscando...</div>
-        </div>
+    <div class="panel">
+        <h1>SUAREZCRAFT</h1>
+        <p>Eres: <b><span id="player-tag">Conectando...</span></b></p>
+        
+        <label>Jugadores conectados:</label>
+        <select id="player-dropdown">
+            <option value="">Nadie conectado</option>
+        </select>
+        
+        <button onclick="intentarUnirse()">UNIRSE A ESTE JUGADOR</button>
+        <div id="log">Estado: Iniciando sistema...</div>
     </div>
 
     <script>
         let peer;
-        let myNumber = 0;
-        const totalSlots = 10; // Escaneamos hasta 10 posibles jugadores
+        let myId = "";
+        const maxPlayers = 5;
 
-        // Intentar encontrar un hueco libre (Jugador 1, 2, 3...)
-        async function buscarHueco() {
-            for (let i = 1; i <= totalSlots; i++) {
-                const idPropuesta = "SuarezPlayer-" + i;
-                const p = new Peer(idPropuesta);
+        // Intentar conectar con un ID libre del 1 al 5
+        async function conectar() {
+            for (let i = 1; i <= maxPlayers; i++) {
+                const tempId = "SuarezPlayer-" + i;
+                const testPeer = new Peer(tempId);
 
-                const success = await new Promise(resolve => {
-                    p.on('open', () => resolve(true));
-                    p.on('error', () => resolve(false));
+                const result = await new Promise(resolve => {
+                    testPeer.on('open', () => resolve({ok: true, p: testPeer}));
+                    testPeer.on('error', () => resolve({ok: false}));
                 });
 
-                if (success) {
-                    peer = p;
-                    myNumber = i;
-                    document.getElementById('status').innerText = "ERES EL JUGADOR " + i;
-                    iniciarLógica();
+                if (result.ok) {
+                    peer = result.p;
+                    myId = tempId;
+                    document.getElementById('player-tag').innerText = "Jugador " + i;
+                    document.getElementById('log').innerText = "Estado: En línea";
+                    escucharInvitaciones();
+                    setInterval(escanearRed, 3000); // Buscar otros cada 3 seg
                     break;
                 }
             }
         }
 
-        function iniciarLógica() {
-            // Escuchar cuando alguien nos intenta contactar
+        function escucharInvitaciones() {
             peer.on('connection', (conn) => {
                 conn.on('data', (data) => {
-                    if (data.type === 'JOIN_REQUEST') {
-                        if (confirm("El Jugador " + data.from + " quiere unirse a tu mundo. ¿Aceptar?")) {
-                            conn.send({ type: 'JOIN_ACCEPTED' });
+                    if (data.type === 'JOIN') {
+                        if (confirm("El Jugador " + data.num + " quiere entrar. ¿Aceptar?")) {
+                            conn.send({ type: 'OK' });
                         }
                     }
                 });
             });
-
-            // Actualizar la lista cada 3 segundos
-            setInterval(actualizarLista, 3000);
         }
 
-        function actualizarLista() {
-            const dropdown = document.getElementById('myDropdown');
-            dropdown.innerHTML = "";
+        function escanearRed() {
+            const select = document.getElementById('player-dropdown');
+            const actualValue = select.value;
+            select.innerHTML = ""; // Limpiar
+
             let encontrados = 0;
 
-            for (let i = 1; i <= totalSlots; i++) {
-                if (i === myNumber) continue;
+            for (let i = 1; i <= maxPlayers; i++) {
+                const target = "SuarezPlayer-" + i;
+                if (target === myId) continue;
 
-                const targetId = "SuarezPlayer-" + i;
-                const conn = peer.connect(targetId);
-
+                const conn = peer.connect(target);
                 conn.on('open', () => {
                     encontrados++;
-                    const div = document.createElement('div');
-                    div.innerText = "Jugador " + i;
-                    div.onclick = () => unirseA(targetId, i);
-                    dropdown.appendChild(div);
+                    const opt = document.createElement('option');
+                    opt.value = target;
+                    opt.innerText = "Jugador " + i;
+                    select.appendChild(opt);
+                    conn.close();
                 });
             }
 
             setTimeout(() => {
                 if (encontrados === 0) {
-                    dropdown.innerHTML = "<div>No hay nadie más</div>";
+                    select.innerHTML = '<option value="">Nadie conectado</option>';
                 }
             }, 1000);
         }
 
-        function unirseA(id, num) {
-            const conn = peer.connect(id);
+        function intentarUnirse() {
+            const target = document.getElementById('player-dropdown').value;
+            if (!target) return alert("Selecciona a alguien de la lista");
+
+            const conn = peer.connect(target);
             conn.on('open', () => {
-                conn.send({ type: 'JOIN_REQUEST', from: myNumber });
-                alert("Enviando petición de unión al Jugador " + num + "...");
+                conn.send({ type: 'JOIN', num: myId.split('-')[1] });
+                document.getElementById('log').innerText = "Petición enviada...";
             });
 
             conn.on('data', (data) => {
-                if (data.type === 'JOIN_ACCEPTED') {
-                    alert("¡Petición aceptada! Entrando al mundo del Jugador " + num);
-                    // Aquí cargarías el mapa 3D
+                if (data.type === 'OK') {
+                    alert("¡Te has unido al mundo!");
                 }
             });
         }
 
-        function toggleMenu() {
-            document.getElementById("myDropdown").classList.toggle("show");
-        }
-
-        // Cerrar el menú si se hace clic fuera
-        window.onclick = function(event) {
-            if (!event.target.matches('.dropbtn')) {
-                const dropdowns = document.getElementsByClassName("dropdown-content");
-                for (let i = 0; i < dropdowns.length; i++) {
-                    if (dropdowns[i].classList.contains('show')) {
-                        dropdowns[i].classList.remove('show');
-                    }
-                }
-            }
-        }
-
-        buscarHueco();
+        conectar();
     </script>
 </body>
 </html>
